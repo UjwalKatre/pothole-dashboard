@@ -1,0 +1,27 @@
+name: pothole_dashboard
+description: Road Pothole Monitoring Dashboard
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  firebase_core: ^2.27.1
+  firebase_database: ^10.4.9
+  firebase_storage: ^11.6.10
+  google_maps_flutter: ^2.6.1
+  google_maps_flutter_web: ^0.5.9
+  http: ^1.2.1
+  intl: ^0.19.0
+  cached_network_image: ^3.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.2
+
+flutter:
+  uses-material-design: true
