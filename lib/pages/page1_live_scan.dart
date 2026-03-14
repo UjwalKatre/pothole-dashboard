@@ -7,8 +7,9 @@ import 'package:intl/intl.dart';
 import '../app_theme.dart';
 import '../models/accident_zone_model.dart';
 import '../models/pothole_report_model.dart';
+import '../models/scanned_road_model.dart';
 import '../services/firebase_service.dart';
-import '../services/gemini_service.dart';
+import '../services/gemini_vision_service.dart';
 
 class Page1LiveScan extends StatefulWidget {
   const Page1LiveScan({super.key});
@@ -23,6 +24,7 @@ class _Page1LiveScanState extends State<Page1LiveScan> {
 
   List<PotholeReport> _reports = [];
   List<AccidentZone> _zones = [];
+  List<ScannedRoad> _scannedRoads = [];
   bool _loadingZones = true;
 
   final List<StreamSubscription> _subs = [];
@@ -42,11 +44,14 @@ class _Page1LiveScanState extends State<Page1LiveScan> {
         }
       }
     }));
+    _subs.add(_svc.scannedRoadsStream().listen((roads) {
+      if (mounted) setState(() => _scannedRoads = roads);
+    }));
   }
 
   Future<void> _loadZones() async {
     try {
-      final zones = await GeminiService.fetchAccidentBlackspots('NH-30');
+      final zones = await GeminiVisionService.fetchAccidentBlackspots('NH-30');
       if (mounted) setState(() { _zones = zones; _loadingZones = false; });
     } catch (_) {
       if (mounted) setState(() => _loadingZones = false);
@@ -62,30 +67,47 @@ class _Page1LiveScanState extends State<Page1LiveScan> {
 
   // Yellow polyline connecting all scanned points in order
   Set<Polyline> _buildPolylines() {
-    if (_reports.length < 2) return {};
-    return {
-      Polyline(
-        polylineId: const PolylineId('scanned_path'),
+    final polylines = <Polyline>{};
+    
+    // Add scanned roads
+    for (final road in _scannedRoads) {
+      polylines.add(Polyline(
+        polylineId: PolylineId('scanned_road_${road.id}'),
+        points: road.path.map((p) => LatLng(p.lat, p.lng)).toList(),
+        color: Colors.orange,
+        width: 5,
+      ));
+    }
+    
+    // Add pothole connection line if no scanned roads
+    if (_scannedRoads.isEmpty && _reports.length >= 2) {
+      polylines.add(Polyline(
+        polylineId: const PolylineId('pothole_path'),
         points: _reports
             .map((r) => LatLng(r.latitude, r.longitude))
             .toList(),
         color: Colors.amber,
         width: 5,
-      ),
-    };
+      ));
+    }
+    
+    return polylines;
   }
 
-  // Red marker at each pothole, blue at latest position
+  // Markers: red for active potholes, green for resolved, blue for latest position
   Set<Marker> _buildMarkers() {
     final markers = <Marker>{};
     for (int i = 0; i < _reports.length; i++) {
       final r = _reports[i];
+      final status = r.status.toLowerCase();
+      final isActive = status == 'active';
+      final hue = isActive ? BitmapDescriptor.hueRed : BitmapDescriptor.hueGreen;
       markers.add(Marker(
         markerId: MarkerId('report_${r.id}'),
         position: LatLng(r.latitude, r.longitude),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+        icon: BitmapDescriptor.defaultMarkerWithHue(hue),
         infoWindow: InfoWindow(
-          title: 'Pothole #${i + 1}',
+          title: '${isActive ? 'Active' : 'Resolved'} Pothole #${i + 1}',
           snippet:
               '${r.latitude.toStringAsFixed(4)}, ${r.longitude.toStringAsFixed(4)}',
         ),
@@ -160,9 +182,13 @@ class _Page1LiveScanState extends State<Page1LiveScan> {
               letterSpacing: 1.0),
         ),
         const Spacer(),
-        _badge(Colors.amber, '${_reports.length} potholes detected'),
+        _badge(Colors.red, '${_reports.where((r) => r.status.toLowerCase() == 'active').length} active'),
+        const SizedBox(width: 10),
+        _badge(Colors.green, '${_reports.where((r) => r.status.toLowerCase() != 'active').length} resolved'),
         const SizedBox(width: 10),
         _badge(Colors.green, '${totalDist.toStringAsFixed(1)} m covered'),
+        const SizedBox(width: 10),
+        _badge(Colors.orange, '${_scannedRoads.length} scans'),
         const SizedBox(width: 10),
         _badge(Colors.red, '${_zones.length} blackspots'),
       ]),
@@ -293,15 +319,31 @@ class _Page1LiveScanState extends State<Page1LiveScan> {
                   width: 28,
                   height: 4,
                   decoration: BoxDecoration(
-                      color: Colors.amber,
+                      color: Colors.orange,
                       borderRadius: BorderRadius.circular(2))),
               'Scanned Path',
             ),
             const SizedBox(height: 4),
             _legendRow(
+              Container(
+                  width: 28,
+                  height: 4,
+                  decoration: BoxDecoration(
+                      color: Colors.amber,
+                      borderRadius: BorderRadius.circular(2))),
+              'Pothole Path',
+            ),
+            const SizedBox(height: 4),
+            _legendRow(
               const Icon(Icons.location_on,
                   color: Colors.red, size: 16),
-              'Pothole Detected',
+              'Active Pothole',
+            ),
+            const SizedBox(height: 4),
+            _legendRow(
+              const Icon(Icons.location_on,
+                  color: Colors.green, size: 16),
+              'Resolved Pothole',
             ),
             const SizedBox(height: 4),
             _legendRow(

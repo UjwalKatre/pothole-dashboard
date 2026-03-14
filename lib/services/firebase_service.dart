@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:firebase_database/firebase_database.dart';
 import '../models/pothole_report_model.dart';
+import '../models/scanned_road_model.dart';
 
 class FirebaseService {
   static final FirebaseService _instance = FirebaseService._internal();
@@ -48,6 +49,24 @@ class FirebaseService {
   Stream<List<PotholeReport>> resolvedReportsStream() {
     return potholeReportsStream().map((list) =>
         list.where((r) => r.status == 'resolved').toList());
+  }
+
+  /// Stream all scanned roads
+  Stream<List<ScannedRoad>> scannedRoadsStream() {
+    return _db.child('scanned_roads').onValue.map((DatabaseEvent event) {
+      final data = event.snapshot.value;
+      if (data == null) return <ScannedRoad>[];
+      try {
+        final map = _safeMap(data);
+        final roads = map.entries
+            .map((e) => ScannedRoad.fromMap(e.key, _safeMap(e.value)))
+            .toList();
+        roads.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+        return roads;
+      } catch (_) {
+        return <ScannedRoad>[];
+      }
+    });
   }
 
   double haversineKm(double lat1, double lng1, double lat2, double lng2) {
